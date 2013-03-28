@@ -37,7 +37,7 @@ def get_script(view, location):
         text,
         current_line + 1,
         current_column,
-        source_path
+        source_path or ""
     )
     return script
 
@@ -196,6 +196,14 @@ class SublimeMixin(object):
 
 
 class Autocomplete(JediEnvMixin, SublimeMixin, sublime_plugin.EventListener):
+    def is_dot_completion_enabled(self, view):
+        plugin_settings = get_plugin_settings()
+        return plugin_settings.get('auto_complete_on_dot', True)
+
+    def is_dot(self, view):
+        pos = view.sel()[0].end()
+        last_char = view.substr(sublime.Region(pos - 1, pos))
+        return last_char == '.'
 
     def on_query_completions(self, view, prefix, locations):
         """ Sublime autocomplete event handler
@@ -215,6 +223,11 @@ class Autocomplete(JediEnvMixin, SublimeMixin, sublime_plugin.EventListener):
         # nothing to do with non-python code
         if 'python' not in view.settings().get('syntax').lower():
             return
+
+        # if last typed characted was dot and dot completion turned off
+        # then interupt autocompletion commmand
+        if self.is_dot(view) and not self.is_dot_completion_enabled(view):
+            view.run_command('hide_auto_complete', {})
 
         # get completions list
         with self.env:
@@ -239,17 +252,3 @@ class Autocomplete(JediEnvMixin, SublimeMixin, sublime_plugin.EventListener):
             self.completions_from_script(script, insert_funcargs)
 
         return completions
-
-
-def plugin_loaded():
-    plugin_settings = get_plugin_settings()
-    if plugin_settings.get('auto_complete_on_dot', True):
-        preferences = sublime.load_settings('Preferences.sublime-settings')
-        triggers = preferences.get('auto_complete_triggers')
-        triggers.append({'selector': 'source.python', 'characters': '.'})
-        preferences.set('auto_complete_triggers', triggers)
-
-
-if int(sublime.version()) < 3000:
-    # Wait for preferences loaded
-    sublime.set_timeout(plugin_loaded, 2000)
